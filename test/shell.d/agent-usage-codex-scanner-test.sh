@@ -72,7 +72,7 @@ pass "Codex collector identifies itself with an empty limits list"
 
 # Pi and omp can both spend a Codex subscription without creating native
 # Codex sessions. Their compatible JSONL transcripts must be included,
-# including Pi's current default config directory.
+# including sessions under a PI_CODING_AGENT_DIR that moves Pi's agent directory.
 PI_HOME=$(mktemp -d)
 trap 'rm -rf "$TEST_HOME" "$PI_HOME"' EXIT
 mkdir -p "$PI_HOME/bin" "$PI_HOME/.pi/agent/sessions/project" "$PI_HOME/.omp/agent/sessions/project" "$PI_HOME/.config/pi/sessions/project"
@@ -88,7 +88,7 @@ cat >"$PI_HOME/.config/pi/sessions/project/pi-config.jsonl" <<EOF
 {"type":"message","id":"pi-config-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","api":"openai-codex-responses","model":"gpt-pi-config","usage":{"input":30,"output":6,"cacheRead":5,"cacheWrite":2,"totalTokens":43}}}
 EOF
 
-result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR= XDG_DATA_HOME="$PI_HOME/.local/share" \
+result=$(HOME="$PI_HOME" CODEX_HOME="$PI_HOME/.codex" PI_CODING_AGENT_DIR="$PI_HOME/.config/pi" XDG_DATA_HOME="$PI_HOME/.local/share" \
   PATH="$PI_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex")
 
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "92" ]] ||

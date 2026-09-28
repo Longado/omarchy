@@ -136,7 +136,7 @@ def add_usage(day, session_key, model, input_tokens, output_tokens, cache_read, 
 
 
 def pi_session_roots():
-  coding_agent_dir = Path(os.environ.get("PI_CODING_AGENT_DIR") or (Path.home() / ".config" / "pi"))
+  coding_agent_dir = Path(os.environ.get("PI_CODING_AGENT_DIR") or (Path.home() / ".pi" / "agent"))
   roots = [
     Path.home() / ".pi" / "agent" / "sessions",
     Path.home() / ".omp" / "agent" / "sessions",
