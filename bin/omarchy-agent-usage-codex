@@ -240,6 +240,13 @@ def pi_parent_session(path):
 # sessions rather than double-counting the default one.
 def pi_session_roots():
   roots = []
+  # Pi keeps its whole agent tree in PI_CODING_AGENT_DIR when that is set, and
+  # expands only a leading ~ or ~/ in it, so ~user stays a literal directory.
+  agent_dir = os.environ.get("PI_CODING_AGENT_DIR")
+  if agent_dir:
+    if agent_dir == "~" or agent_dir.startswith("~/"):
+      agent_dir = str(Path.home()) + agent_dir[1:]
+    roots.append(Path(os.path.abspath(agent_dir)) / "sessions")
   for base in (Path.home() / ".pi", Path.home() / ".omp"):
     roots.append(base / "agent" / "sessions")
     profiles = base / "profiles"
@@ -249,17 +256,8 @@ def pi_session_roots():
     except OSError:
       # No profiles directory, or it is unreadable: the default root stands.
       pass
-  # Pi keeps its whole agent tree in PI_CODING_AGENT_DIR when that is set, so
-  # sessions written that way live nowhere else.
-  agent_dir = os.environ.get("PI_CODING_AGENT_DIR")
-  if agent_dir:
-    try:
-      roots.append(Path(os.path.abspath(Path(agent_dir).expanduser())) / "sessions")
-    except RuntimeError:
-      # ~user for a user that does not exist: there is nothing there to scan.
-      pass
-  # Aliased roots are scanned once, but under the path as given: parentSession
-  # links name sessions by the path pi used, not the resolved one.
+  # Aliased roots are scanned once, under the first spelling: parentSession
+  # links name sessions by the path pi used, which is PI_CODING_AGENT_DIR's.
   unique = []
   resolved = set()
   for root in roots:

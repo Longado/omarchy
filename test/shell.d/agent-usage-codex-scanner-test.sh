@@ -192,21 +192,33 @@ result=$(agent_usage "$AGENT_HOME/.config/pi")
   fail "Codex collector reads usage from PI_CODING_AGENT_DIR" "$result"
 pass "Codex collector counts usage under PI_CODING_AGENT_DIR"
 
+# Pi run through an alias of its default directory names a fork's parent by the
+# alias, so the alias is the spelling scanned, or the fork counts as a session.
 ln -s "$AGENT_HOME/.pi/agent" "$AGENT_HOME/pi-alias"
+cat >"$AGENT_HOME/.pi/agent/sessions/project/pi-fork.jsonl" <<EOF
+{"type":"session","id":"pi-fork","parentSession":"$AGENT_HOME/pi-alias/sessions/project/pi.jsonl"}
+{"type":"message","id":"pi-default-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
+EOF
 result=$(agent_usage "$AGENT_HOME/pi-alias" --force)
 [[ $(jq -c '[.todayTotalTokens,.todaySessions]' <<<"$result") == '[19,1]' ]] ||
   fail "Codex collector scans an aliased PI_CODING_AGENT_DIR once" "$result"
 pass "Codex collector scans an aliased PI_CODING_AGENT_DIR once"
+rm "$AGENT_HOME/.pi/agent/sessions/project/pi-fork.jsonl"
 
 result=$(agent_usage "~/.config/pi" --force)
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "62" ]] ||
   fail "Codex collector expands ~ in PI_CODING_AGENT_DIR" "$result"
 pass "Codex collector expands ~ in PI_CODING_AGENT_DIR"
 
-result=$(agent_usage "~omarchy-codex-no-such-user-7194" --force)
-[[ $(jq -r '.todayTotalTokens' <<<"$result") == "19" ]] ||
-  fail "Codex collector skips a PI_CODING_AGENT_DIR naming an unknown user" "$result"
-pass "Codex collector skips a PI_CODING_AGENT_DIR naming an unknown user"
+# Pi expands only ~ and ~/, so ~name is a directory of that name, not a home.
+mkdir -p "$AGENT_HOME/cwd-tilde/~omarchy-codex-7194/sessions/project"
+cat >"$AGENT_HOME/cwd-tilde/~omarchy-codex-7194/sessions/project/pi-literal.jsonl" <<EOF
+{"type":"message","id":"pi-literal-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-literal","usage":{"input":4,"output":1,"cacheRead":0,"cacheWrite":0,"totalTokens":5}}}
+EOF
+result=$(cd "$AGENT_HOME/cwd-tilde" && agent_usage "~omarchy-codex-7194" --force)
+[[ $(jq -r '.todayTotalTokens' <<<"$result") == "24" ]] ||
+  fail "Codex collector reads ~name in PI_CODING_AGENT_DIR literally, as Pi does" "$result"
+pass "Codex collector reads ~name in PI_CODING_AGENT_DIR literally, as Pi does"
 
 mkdir -p "$AGENT_HOME/pi-custom/sessions/project" "$AGENT_HOME/pi-other/sessions/project"
 cat >"$AGENT_HOME/pi-custom/sessions/project/pi-custom.jsonl" <<EOF
