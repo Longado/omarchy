@@ -563,15 +563,17 @@ def cache_root():
 def scan_cache_digest():
   codex_home = Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
   db = Path(os.environ.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share")) / "opencode" / "opencode.db"
-  # The digest covers every data path the scan reads: the codex session
-  # roots, the opencode DB, and (via Path.home()) the pi/omp session roots.
-  return hashlib.sha1((str(Path.home()) + "\n" + str(codex_home) + "\n" + str(db)).encode("utf-8")).hexdigest()[:16]
+  # The digest covers the codex session root and the opencode DB; the pi/omp
+  # session roots are keyed separately in scan_cache_paths. Resolved, so
+  # repointing a symlinked CODEX_HOME or data dir changes the key.
+  return hashlib.sha1((str(Path.home()) + "\n" + os.path.realpath(codex_home) + "\n" + os.path.realpath(db)).encode("utf-8")).hexdigest()[:16]
 
 
 def scan_cache_paths(pi_roots):
   # The pi roots are keyed too: PI_CODING_AGENT_DIR moves them without moving
   # Path.home(), and a cache from the old roots would hide the new sessions.
-  digest = hashlib.sha1((scan_cache_digest() + "\n" + "\n".join(str(root) for root in pi_roots)).encode("utf-8")).hexdigest()[:16]
+  # Resolved, so repointing a symlinked root changes the key too.
+  digest = hashlib.sha1((scan_cache_digest() + "\n" + "\n".join(os.path.realpath(root) for root in pi_roots)).encode("utf-8")).hexdigest()[:16]
   root = cache_root()
   return root / f"codex-scan-{digest}.json", root / f"codex-scan-{digest}.lock"
 
