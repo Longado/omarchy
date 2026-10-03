@@ -230,7 +230,7 @@ def pi_parent_session(path):
   parent = header.get("parentSession")
   if not isinstance(parent, str) or not parent:
     return None
-  return os.path.abspath(os.path.expanduser(parent))
+  return os.path.realpath(os.path.expanduser(parent))
 
 
 # `omp --profile=<name>` (and pi's equivalent) relocates the whole agent tree
@@ -256,15 +256,11 @@ def pi_session_roots():
     except OSError:
       # No profiles directory, or it is unreadable: the default root stands.
       pass
-  # Aliased roots are scanned once, under the first spelling: parentSession
-  # links name sessions by the path pi used, which is PI_CODING_AGENT_DIR's.
+  # Aliased roots are scanned once.
   unique = []
   resolved = set()
   for root in roots:
-    try:
-      key = root.resolve()
-    except (OSError, RuntimeError):
-      key = root.absolute()
+    key = os.path.realpath(root)
     if key not in resolved:
       resolved.add(key)
       unique.append(root)
@@ -304,7 +300,9 @@ def scan_pi_sessions(roots=None):
           continue
         line = event.get("data", {}).get("lines", {}).get("text", "")
         raw_path = event.get("data", {}).get("path", {}).get("text", "pi-session")
-        path = os.path.abspath(os.path.expanduser(raw_path))
+        # Resolved, like parentSession, so a fork finds its parent whichever
+        # alias of the agent directory either was written under.
+        path = os.path.realpath(os.path.expanduser(raw_path))
         entry = json.loads(line)
       except Exception:
         continue

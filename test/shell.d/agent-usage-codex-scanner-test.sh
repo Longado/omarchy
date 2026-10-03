@@ -192,18 +192,20 @@ result=$(agent_usage "$AGENT_HOME/.config/pi")
   fail "Codex collector reads usage from PI_CODING_AGENT_DIR" "$result"
 pass "Codex collector counts usage under PI_CODING_AGENT_DIR"
 
-# Pi run through an alias of its default directory names a fork's parent by the
-# alias, so the alias is the spelling scanned, or the fork counts as a session.
+# An alias of the default directory is scanned once, and a fork finds its
+# parent whichever of the two spellings it was written under.
 ln -s "$AGENT_HOME/.pi/agent" "$AGENT_HOME/pi-alias"
-cat >"$AGENT_HOME/.pi/agent/sessions/project/pi-fork.jsonl" <<EOF
-{"type":"session","id":"pi-fork","parentSession":"$AGENT_HOME/pi-alias/sessions/project/pi.jsonl"}
+for spelling in pi-alias .pi/agent; do
+  cat >"$AGENT_HOME/.pi/agent/sessions/project/pi-fork-${spelling//\//-}.jsonl" <<EOF
+{"type":"session","id":"pi-fork","parentSession":"$AGENT_HOME/$spelling/sessions/project/pi.jsonl"}
 {"type":"message","id":"pi-default-1","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi","usage":{"input":10,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":19}}}
 EOF
+done
 result=$(agent_usage "$AGENT_HOME/pi-alias" --force)
-[[ $(jq -c '[.todayTotalTokens,.todaySessions]' <<<"$result") == '[19,1]' ]] ||
+[[ $(jq -c '[.todayTotalTokens,.todaySessions,.totalSessions]' <<<"$result") == '[19,1,1]' ]] ||
   fail "Codex collector scans an aliased PI_CODING_AGENT_DIR once" "$result"
 pass "Codex collector scans an aliased PI_CODING_AGENT_DIR once"
-rm "$AGENT_HOME/.pi/agent/sessions/project/pi-fork.jsonl"
+rm "$AGENT_HOME/.pi/agent/sessions/project/"pi-fork-*.jsonl
 
 result=$(agent_usage "~/.config/pi" --force)
 [[ $(jq -r '.todayTotalTokens' <<<"$result") == "62" ]] ||
