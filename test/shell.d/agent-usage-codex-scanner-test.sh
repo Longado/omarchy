@@ -259,6 +259,55 @@ result=$(cd "$AGENT_HOME/cwd-b" && agent_usage pi-relative)
   fail "Codex collector keys a relative PI_CODING_AGENT_DIR by working directory" "$result"
 pass "Codex collector keys a relative PI_CODING_AGENT_DIR by working directory"
 
+# A symlinked PI_CODING_AGENT_DIR keeps its own spelling when the link is
+# repointed, so the cache has to be keyed by where it resolves to.
+mkdir -p "$AGENT_HOME/pi-link-a/sessions/project" "$AGENT_HOME/pi-link-b/sessions/project"
+cat >"$AGENT_HOME/pi-link-a/sessions/project/pi-link.jsonl" <<EOF
+{"type":"message","id":"pi-link-a","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-link-a","usage":{"input":14,"output":2,"cacheRead":1,"cacheWrite":1,"totalTokens":18}}}
+EOF
+cat >"$AGENT_HOME/pi-link-b/sessions/project/pi-link.jsonl" <<EOF
+{"type":"message","id":"pi-link-b","timestamp":"$timestamp","message":{"role":"assistant","provider":"openai-codex","model":"gpt-pi-link-b","usage":{"input":21,"output":4,"cacheRead":3,"cacheWrite":2,"totalTokens":30}}}
+EOF
+ln -s "$AGENT_HOME/pi-link-a" "$AGENT_HOME/pi-link"
+result=$(agent_usage "$AGENT_HOME/pi-link" --force)
+[[ $(jq -c '.modelUsage | has("gpt-pi-link-a")' <<<"$result") == "true" ]] ||
+  fail "Codex collector reads a symlinked PI_CODING_AGENT_DIR" "$result"
+ln -sfn "$AGENT_HOME/pi-link-b" "$AGENT_HOME/pi-link"
+result=$(agent_usage "$AGENT_HOME/pi-link")
+[[ $(jq -c '.modelUsage | has("gpt-pi-link-b")' <<<"$result") == "true" ]] ||
+  fail "Codex collector rescans after a PI_CODING_AGENT_DIR symlink is repointed" "$result"
+pass "Codex collector rescans after a PI_CODING_AGENT_DIR symlink is repointed"
+
+# CODEX_HOME is cached by the same rule: repointing a symlink to it must not
+# bring back the old directory's totals.
+LINK_HOME=$(signed_in_home)
+cp "$TEST_HOME/bin/codex" "$LINK_HOME/bin/codex"
+for side in a b; do
+  mkdir -p "$LINK_HOME/codex-$side/sessions/$(date +%Y/%m/%d)"
+  touch "$LINK_HOME/codex-$side/auth.json"
+done
+for side_tokens in a:10 b:20; do
+  side=${side_tokens%%:*}
+  tokens=${side_tokens##*:}
+  cat >"$LINK_HOME/codex-$side/sessions/$(date +%Y/%m/%d)/rollout.jsonl" <<EOF
+{"timestamp":"$timestamp","type":"turn_context","payload":{"model":"gpt-home-$side"}}
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":$tokens,"output_tokens":2,"total_tokens":$((tokens + 2))},"last_token_usage":{"input_tokens":$tokens,"output_tokens":2,"total_tokens":$((tokens + 2))}}}}
+EOF
+done
+codex_home_usage() {
+  HOME="$LINK_HOME" CODEX_HOME="$LINK_HOME/codex-link" XDG_DATA_HOME="$LINK_HOME/.local/share" \
+    PATH="$LINK_HOME/bin:$PATH" "$ROOT/bin/omarchy-agent-usage-codex" "$@"
+}
+ln -s "$LINK_HOME/codex-a" "$LINK_HOME/codex-link"
+result=$(codex_home_usage --force)
+[[ $(jq -c '.modelUsage | has("gpt-home-a")' <<<"$result") == "true" ]] ||
+  fail "Codex collector reads a symlinked CODEX_HOME" "$result"
+ln -sfn "$LINK_HOME/codex-b" "$LINK_HOME/codex-link"
+result=$(codex_home_usage)
+[[ $(jq -c '.modelUsage | has("gpt-home-b")' <<<"$result") == "true" ]] ||
+  fail "Codex collector rescans after a CODEX_HOME symlink is repointed" "$result"
+pass "Codex collector rescans after a CODEX_HOME symlink is repointed"
+
 if ! python3 - "$ROOT/bin/omarchy-agent-usage-codex" <<'PY'
 import runpy
 import sys
