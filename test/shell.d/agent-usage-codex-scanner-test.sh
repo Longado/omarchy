@@ -308,6 +308,32 @@ result=$(codex_home_usage)
   fail "Codex collector rescans after a CODEX_HOME symlink is repointed" "$result"
 pass "Codex collector rescans after a CODEX_HOME symlink is repointed"
 
+# The per-file cache is keyed by session path, spelled through the link, so
+# only its file name keeps the two homes apart. Same size and mtime on both
+# sides make a stale record look current; dropping the aggregate cache leaves
+# the per-file cache as the only thing that could replay the old totals.
+for side_tokens in c:10 d:20; do
+  side=${side_tokens%%:*}
+  tokens=${side_tokens##*:}
+  mkdir -p "$LINK_HOME/codex-$side/sessions/$(date +%Y/%m/%d)"
+  touch "$LINK_HOME/codex-$side/auth.json"
+  cat >"$LINK_HOME/codex-$side/sessions/$(date +%Y/%m/%d)/rollout.jsonl" <<EOF
+{"timestamp":"$timestamp","type":"turn_context","payload":{"model":"gpt-home-$side"}}
+{"timestamp":"$timestamp","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":$tokens,"output_tokens":2,"total_tokens":$((tokens + 2))},"last_token_usage":{"input_tokens":$tokens,"output_tokens":2,"total_tokens":$((tokens + 2))}}}}
+EOF
+done
+touch -r "$LINK_HOME/codex-c/sessions/$(date +%Y/%m/%d)/rollout.jsonl" "$LINK_HOME/codex-d/sessions/$(date +%Y/%m/%d)/rollout.jsonl"
+ln -sfn "$LINK_HOME/codex-c" "$LINK_HOME/codex-link"
+result=$(codex_home_usage --force)
+[[ $(jq -c '.modelUsage | has("gpt-home-c")' <<<"$result") == "true" ]] ||
+  fail "Codex collector reads the first CODEX_HOME for the per-file cache check" "$result"
+ln -sfn "$LINK_HOME/codex-d" "$LINK_HOME/codex-link"
+find "$LINK_HOME/.cache/omarchy/agent-usage" -type f -name 'codex-scan-*.json' -delete
+result=$(codex_home_usage)
+[[ $(jq -c '.modelUsage | has("gpt-home-d") and (has("gpt-home-c") | not)' <<<"$result") == "true" ]] ||
+  fail "Codex collector does not replay per-file records after a CODEX_HOME symlink is repointed" "$result"
+pass "Codex collector does not replay per-file records after a CODEX_HOME symlink is repointed"
+
 if ! python3 - "$ROOT/bin/omarchy-agent-usage-codex" <<'PY'
 import runpy
 import sys
